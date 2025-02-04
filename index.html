@@ -274,166 +274,204 @@
                 // return mask;
             }
 
-            PIXI.extensions.add(PIXI.loadDDS, PIXI.loadKTX , PIXI.detectCompressed, PIXI.resolveCompressedTextureUrl, zstdDDSExtension);
-            const app = new PIXI.Application();
-            await app.init({
-                resizeTo: window,
-                antialias: true,
-                useBackBuffer: true,
-                preference: 'webgpu',
-            });
+            try {
+                PIXI.extensions.add(PIXI.loadDDS, PIXI.loadKTX , PIXI.detectCompressed, PIXI.resolveCompressedTextureUrl, zstdDDSExtension);
+                const app = new PIXI.Application();
+                await app.init({
+                    resizeTo: window,
+                    antialias: true,
+                    useBackBuffer: true,
+                    preference: 'webgpu',
+                });
 
-            // Hide the PixiJS canvas until loading is done
-            app.canvas.style.display = 'none';
-            
-            // load tree.json file
-            const scaleImage = 2;
-            const ddsIconInfo = {};
-            const assetsInfo = {};
-            const basePath = 'https://raw.githubusercontent.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/refs/heads/dev/src/TreeData/0_1/';
-            const assetsToLoad = [];
-            const treeInfo = await loadTreeJSON(basePath + 'tree.json');
-            Object.entries(treeInfo.ddsCoords).forEach(([key, value]) => {
-                assetsToLoad.push(basePath + key);
+                // Hide the PixiJS canvas until loading is done
+                app.canvas.style.display = 'none';
+                
+                // load tree.json file
+                const scaleImage = 2;
+                const ddsIconInfo = {};
+                const assetsInfo = {};
+                const basePath = 'https://raw.githubusercontent.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/refs/heads/dev/src/TreeData/0_1/';
+                const assetsToLoad = [];
+                const treeInfo = await loadTreeJSON(basePath + 'tree.json');
+                Object.entries(treeInfo.ddsCoords).forEach(([key, value]) => {
+                    assetsToLoad.push(basePath + key);
 
-                Object.entries(value).forEach(([key2, value2]) => {
-                    ddsIconInfo[key2] = {
-                        texturePath: basePath + key,
-                        layer: value2 - 1
+                    Object.entries(value).forEach(([key2, value2]) => {
+                        ddsIconInfo[key2] = {
+                            texturePath: basePath + key,
+                            layer: value2 - 1
+                        };
+                    });
+                });
+
+                Object.entries(treeInfo.assets).forEach(([key, value]) => {
+                    assetsToLoad.push(basePath + value[0]);
+                    assetsInfo[key] = {
+                        texturePath: basePath + value[0]
                     };
                 });
-            });
 
-            Object.entries(treeInfo.assets).forEach(([key, value]) => {
-                assetsToLoad.push(basePath + value[0]);
-                assetsInfo[key] = {
-                    texturePath: basePath + value[0]
-                };
-            });
+                // calculate orbits per skill
+                treeInfo.orbitAnglesByOrbit = [];
+                treeInfo.constants.skillsPerOrbit.forEach((value) => {
+                    treeInfo.orbitAnglesByOrbit.push(calcOrbitAngles(value));
+                });
 
-            // calculate orbits per skill
-            treeInfo.orbitAnglesByOrbit = [];
-            treeInfo.constants.skillsPerOrbit.forEach((value) => {
-                treeInfo.orbitAnglesByOrbit.push(calcOrbitAngles(value));
-            });
-
-            treeInfo.connectors = [];
-            // calculate data of nodes
-            Object.entries(treeInfo.nodes).forEach(([key,node]) => {
-                // calculate the position of the node base on the group
-                const group = treeInfo.groups[node.group - 1];
-                if (group == null) {
-                    console.log('Group not found for node', node);
-                    return;
-                }
-
-                // set the type
-                if (node.classesStart) {
-                    node.type = "ClassStart";
-                } else if (node.isAscendancyStart) {
-                    node.type = "AscendClassStart";
-                } else if (node.isOnlyImage) {
-                    node.type = "OnlyImage";
-                } else if (node.ascendancyName && node.isNotable) {
-                    node.type = "Notable";
-                    node.overlay = {
-                        unalloc: "AscendancyFrameLargeNormal",
-                        alloc: "AscendancyFrameLargeAllocated",
-                        path: "AscendancyFrameLargeCanAllocate",
-                    };
-                } else if (node.ascendancyName) {
-                    node.type = "Normal";
-                    node.overlay = {
-                        unalloc: "AscendancyFrameSmallNormal",
-                        alloc: "AscendancyFrameSmallAllocated",
-                        path: "AscendancyFrameSmallCanAllocate",
-                    };
-                } else if (node.isJewelSocket) {
-                    node.type = "Socket";
-                    node.overlay = {
-                        unalloc: "JewelFrameUnallocated",
-                        alloc: "JewelFrameAllocated",
-                        path: "JewelFrameCanAllocate",
-                    };
-                } else if (node.isKeystone) {
-                    node.type = "Keystone";
-                    node.overlay = {
-                        unalloc: "KeystoneFrameUnallocated",
-                        alloc: "KeystoneFrameAllocated",
-                        path: "KeystoneFrameCanAllocate",
-                    };
-                } else if (node.isNotable) {
-                    node.type = "Notable";
-                    node.overlay = {
-                        unalloc: "NotableFrameUnallocated",
-                        alloc: "NotableFrameAllocated",
-                        path: "NotableFrameCanAllocate",
-                    };
-                } else {
-                    node.type = "Normal";
-                    node.overlay = {
-                        unalloc: "PSSkillFrame",
-                        alloc: "PSSkillFrameActive",
-                        path: "PSSkillFrameHighlighted",
-                    };
-                }
-
-                node.angle =  treeInfo.orbitAnglesByOrbit[node.orbit][node.orbitIndex];
-                let orbitRadious = treeInfo.constants.orbitRadii[node.orbit];
-                node.x = group.x + Math.sin(node.angle) * orbitRadious;
-                node.y = group.y - Math.cos(node.angle) * orbitRadious;
-            });
-
-            // calculate connectors
-            Object.entries(treeInfo.nodes).forEach(([key,node]) => {
-                if (!node.connections || node.connections.length == 0) {
-                    return;
-                }
-
-                for (let con of node.connections) {
-                    let target = treeInfo.nodes[con.id];
-                    if (!target) {
-                        console.log('Target not found for node', node);
-                        continue;
+                treeInfo.connectors = [];
+                // calculate data of nodes
+                Object.entries(treeInfo.nodes).forEach(([key,node]) => {
+                    // calculate the position of the node base on the group
+                    const group = treeInfo.groups[node.group - 1];
+                    if (group == null) {
+                        console.log('Group not found for node', node);
+                        return;
                     }
 
-                    if (node.type == "OnlyImage" || target.type == "OnlyImage") {
-                        continue;
+                    // set the type
+                    if (node.classesStart) {
+                        node.type = "ClassStart";
+                    } else if (node.isAscendancyStart) {
+                        node.type = "AscendClassStart";
+                    } else if (node.isOnlyImage) {
+                        node.type = "OnlyImage";
+                    } else if (node.ascendancyName && node.isNotable) {
+                        node.type = "Notable";
+                        node.overlay = {
+                            unalloc: "AscendancyFrameLargeNormal",
+                            alloc: "AscendancyFrameLargeAllocated",
+                            path: "AscendancyFrameLargeCanAllocate",
+                        };
+                    } else if (node.ascendancyName) {
+                        node.type = "Normal";
+                        node.overlay = {
+                            unalloc: "AscendancyFrameSmallNormal",
+                            alloc: "AscendancyFrameSmallAllocated",
+                            path: "AscendancyFrameSmallCanAllocate",
+                        };
+                    } else if (node.isJewelSocket) {
+                        node.type = "Socket";
+                        node.overlay = {
+                            unalloc: "JewelFrameUnallocated",
+                            alloc: "JewelFrameAllocated",
+                            path: "JewelFrameCanAllocate",
+                        };
+                    } else if (node.isKeystone) {
+                        node.type = "Keystone";
+                        node.overlay = {
+                            unalloc: "KeystoneFrameUnallocated",
+                            alloc: "KeystoneFrameAllocated",
+                            path: "KeystoneFrameCanAllocate",
+                        };
+                    } else if (node.isNotable) {
+                        node.type = "Notable";
+                        node.overlay = {
+                            unalloc: "NotableFrameUnallocated",
+                            alloc: "NotableFrameAllocated",
+                            path: "NotableFrameCanAllocate",
+                        };
+                    } else {
+                        node.type = "Normal";
+                        node.overlay = {
+                            unalloc: "PSSkillFrame",
+                            alloc: "PSSkillFrameActive",
+                            path: "PSSkillFrameHighlighted",
+                        };
                     }
 
-                    if (node.ascendancyName != target.ascendancyName) {
-                        continue;
+                    node.angle =  treeInfo.orbitAnglesByOrbit[node.orbit][node.orbitIndex];
+                    let orbitRadious = treeInfo.constants.orbitRadii[node.orbit];
+                    node.x = group.x + Math.sin(node.angle) * orbitRadious;
+                    node.y = group.y - Math.cos(node.angle) * orbitRadious;
+                });
+
+                // calculate connectors
+                Object.entries(treeInfo.nodes).forEach(([key,node]) => {
+                    if (!node.connections || node.connections.length == 0) {
+                        return;
                     }
 
-                    if (node.skill == target.skill) {
-                        continue;
-                    }
+                    for (let con of node.connections) {
+                        let target = treeInfo.nodes[con.id];
+                        if (!target) {
+                            console.log('Target not found for node', node);
+                            continue;
+                        }
 
-                    if (node.classesStart || target.classesStart) {
-                        continue;
-                    }
+                        if (node.type == "OnlyImage" || target.type == "OnlyImage") {
+                            continue;
+                        }
 
-                    if (con.orbit != 0 && treeInfo.constants.orbitRadii[Math.abs(con.orbit)]) {
-                        // if (node.skill != 10364) {
-                        //     continue;
-                        // }
-                        let orbit = Math.abs(con.orbit);
-                        let r = treeInfo.constants.orbitRadii[orbit];
+                        if (node.ascendancyName != target.ascendancyName) {
+                            continue;
+                        }
 
-                        let dx = target.x - node.x;
-                        let dy = target.y - node.y;
-                        let distance = Math.sqrt(dx * dx + dy * dy);
+                        if (node.skill == target.skill) {
+                            continue;
+                        }
 
-                        if (distance < 2 * r) {
-                            let perp = Math.sqrt(r * r - (distance * distance) / 4) * Math.sign(con.orbit);
-                            let cx = node.x + dx / 2 + perp * (dy / distance);
-                            let cy = node.y + dy / 2 - perp * (dx / distance);
+                        if (node.classesStart || target.classesStart) {
+                            continue;
+                        }
 
-                            let angle1 = Math.atan2(node.y - cy, node.x - cx);
-                            let angle2 = Math.atan2(target.y - cy, target.x - cx);
+                        if (con.orbit != 0 && treeInfo.constants.orbitRadii[Math.abs(con.orbit)]) {
+                            // if (node.skill != 10364) {
+                            //     continue;
+                            // }
+                            let orbit = Math.abs(con.orbit);
+                            let r = treeInfo.constants.orbitRadii[orbit];
 
-                            let startAngle = angle1 < angle2 ? angle1 : angle2;
-                            let endAngle = angle1 < angle2 ? angle2 : angle1;
+                            let dx = target.x - node.x;
+                            let dy = target.y - node.y;
+                            let distance = Math.sqrt(dx * dx + dy * dy);
+
+                            if (distance < 2 * r) {
+                                let perp = Math.sqrt(r * r - (distance * distance) / 4) * Math.sign(con.orbit);
+                                let cx = node.x + dx / 2 + perp * (dy / distance);
+                                let cy = node.y + dy / 2 - perp * (dx / distance);
+
+                                let angle1 = Math.atan2(node.y - cy, node.x - cx);
+                                let angle2 = Math.atan2(target.y - cy, target.x - cx);
+
+                                let startAngle = angle1 < angle2 ? angle1 : angle2;
+                                let endAngle = angle1 < angle2 ? angle2 : angle1;
+
+                                const diff = endAngle - startAngle;
+                                if (diff >= Math.PI) {
+                                    const c = 2 * Math.PI - diff;
+                                    startAngle = endAngle;
+                                    endAngle = startAngle + c;
+                                }
+
+                                // startAngle -= Math.PI / 2;
+                                // endAngle -= Math.PI / 2;
+
+                                let angle = endAngle - startAngle;
+                                const arcsNeed = Math.ceil(angle / (Math.PI / 2));
+                                const initialRotation = Math.PI / 2 + startAngle;
+                                for (let i = 0; i < arcsNeed; i++) {
+                                    let connector = { 
+                                        type: "Orbit" + orbit, 
+                                        x: cx, 
+                                        y: cy,
+                                        rotation: angle + initialRotation,
+                                        a1: startAngle,
+                                        a2: endAngle,
+                                        r: r
+                                    };
+                                    treeInfo.connectors.push(connector);
+
+                                    if (angle < Math.PI / 2) {
+                                        continue;
+                                    }
+                                    angle -= Math.PI / 2;
+                                }
+                                continue;
+                            }
+                            
+                        } else if (node.group == target.group && node.orbit == target.orbit && con.orbit == 0) {
+                            let startAngle = node.angle < target.angle ? node.angle : target.angle;
+                            let endAngle = node.angle < target.angle ? target.angle : node.angle;
 
                             const diff = endAngle - startAngle;
                             if (diff >= Math.PI) {
@@ -442,21 +480,23 @@
                                 endAngle = startAngle + c;
                             }
 
-                            // startAngle -= Math.PI / 2;
-                            // endAngle -= Math.PI / 2;
+                            startAngle -= Math.PI / 2;
+                            endAngle -= Math.PI / 2;
 
+                            let cx = treeInfo.groups[node.group - 1].x;
+                            let cy = treeInfo.groups[node.group - 1].y;
                             let angle = endAngle - startAngle;
                             const arcsNeed = Math.ceil(angle / (Math.PI / 2));
                             const initialRotation = Math.PI / 2 + startAngle;
                             for (let i = 0; i < arcsNeed; i++) {
                                 let connector = { 
-                                    type: "Orbit" + orbit, 
+                                    type: "Orbit" + node.orbit, 
                                     x: cx, 
                                     y: cy,
                                     rotation: angle + initialRotation,
                                     a1: startAngle,
                                     a2: endAngle,
-                                    r: r
+                                    r: treeInfo.constants.orbitRadii[node.orbit]
                                 };
                                 treeInfo.connectors.push(connector);
 
@@ -467,286 +507,250 @@
                             }
                             continue;
                         }
-                        
-                    } else if (node.group == target.group && node.orbit == target.orbit && con.orbit == 0) {
-                        let startAngle = node.angle < target.angle ? node.angle : target.angle;
-                        let endAngle = node.angle < target.angle ? target.angle : node.angle;
 
-                        const diff = endAngle - startAngle;
-                        if (diff >= Math.PI) {
-                            const c = 2 * Math.PI - diff;
-                            startAngle = endAngle;
-                            endAngle = startAngle + c;
-                        }
+                        let start = { x: node.x, y: node.y };
+                        let end = { x: target.x, y: target.y };
+                        let distance = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
+                        let angle = Math.atan2(end.y - start.y, end.x - start.x);
+                        let control = { x: start.x + distance / 2 * Math.cos(angle), y: start.y + distance / 2 * Math.sin(angle) };
+                        treeInfo.connectors.push({ type: "LineConnector", x: control.x, y: control.y, rotation: angle, width: distance });
+                    }
+                })
 
-                        startAngle -= Math.PI / 2;
-                        endAngle -= Math.PI / 2;
+                // load the json file
+                await PIXI.Assets.load(assetsToLoad);
 
-                        let cx = treeInfo.groups[node.group - 1].x;
-                        let cy = treeInfo.groups[node.group - 1].y;
-                        let angle = endAngle - startAngle;
-                        const arcsNeed = Math.ceil(angle / (Math.PI / 2));
-                        const initialRotation = Math.PI / 2 + startAngle;
-                        for (let i = 0; i < arcsNeed; i++) {
-                            let connector = { 
-                                type: "Orbit" + node.orbit, 
-                                x: cx, 
-                                y: cy,
-                                rotation: angle + initialRotation,
-                                a1: startAngle,
-                                a2: endAngle,
-                                r: treeInfo.constants.orbitRadii[node.orbit]
-                            };
-                            treeInfo.connectors.push(connector);
+                // Hide the loading message
+                document.getElementById('loading-message').style.display = 'none';
 
-                            if (angle < Math.PI / 2) {
-                                continue;
-                            }
-                            angle -= Math.PI / 2;
-                        }
-                        continue;
+                // Show the PixiJS canvas
+                app.canvas.style.display = 'block';
+
+                // load center background
+                const bgAsset = ddsIconInfo['Background2'];
+                const bg = PIXI.Sprite.from(bgAsset.texturePath);
+                // bg.position.set(app.screen.width / 2, app.screen.height / 2);
+                bg.width = app.screen.width;
+                bg.height = app.screen.height;
+                
+                app.stage.addChild(bg);
+
+                // Viewport
+                const viewport =  new PIXI.Container();
+                app.stage.addChild(viewport);
+
+                const bgContainer = new PIXI.Container();
+                viewport.addChild(bgContainer);
+
+                const arcContainer = new PIXI.Container();
+                viewport.addChild(arcContainer);
+
+                const linesContainer = new PIXI.Container();
+                viewport.addChild(linesContainer);
+
+                const nodesContainer = new PIXI.Container();
+                viewport.addChild(nodesContainer);
+
+                let assetOrbit2 = PIXI.Texture.from(assetsInfo["Orbit2Normal"].texturePath);
+                assetOrbit2.source.style.maxAnisotropy = 16;
+                assetOrbit2.source.autoGenerateMipmaps = true;
+                let demoArc = createOrGetTheMask({ x: 0, y: 0, r: 162, a1: 250 * (Math.PI / 180), a2: 270 * (Math.PI / 180) }, assetOrbit2, true);
+                let demo2Arc = createOrGetTheMask({ x: 0, y: 0, r: 162, a1: 270 * (Math.PI / 180), a2: 360 * (Math.PI / 180) }, assetOrbit2, true);
+
+                let spriteArc = new PIXI.Sprite(assetOrbit2);
+                spriteArc.anchor.set(1);
+                spriteArc.position.set(100, 0);
+                arcContainer.addChild(spriteArc);
+                //demoArc.setStrokeStyle({ width: 50, color: 0xFF0000, alpha: 1})
+                //demoArc.arc(0, 0, 500, 0, Math.PI / 2);
+                //demoArc.rect(0, 0, 1000, 1000);
+                //demoArc.stroke();
+                arcContainer.addChild(demoArc);
+                arcContainer.addChild(demo2Arc);
+
+                // load the class
+                let classAsset =  ddsIconInfo['ClassesMonk'];
+                const classMesh = createShape(classAsset.texturePath, classAsset.layer);
+                classMesh.anchor.set(0.5);
+                classMesh.position.set(0, 0);
+                classMesh.width = 1500 * scaleImage;
+                classMesh.height = 1500 * scaleImage;
+                bgContainer.addChild(classMesh);
+
+                // Load the center activate
+                let treeCenterActive = ddsIconInfo['BGTreeActive'];
+                const treeCenterActiveMesh = createShape(treeCenterActive.texturePath, treeCenterActive.layer);
+                treeCenterActiveMesh.anchor.set(0.5);
+                treeCenterActiveMesh.position.set(0, 0);
+                treeCenterActiveMesh.width = 2000 * scaleImage;
+                treeCenterActiveMesh.height = 2000 * scaleImage;
+                bgContainer.addChild(treeCenterActiveMesh);
+
+                // Load the center tree
+                let treeCenter = ddsIconInfo['BGTree'];
+                const treeCenterMesh = createShape(treeCenter.texturePath, treeCenter.layer);
+                treeCenterMesh.anchor.set(0.5);
+                treeCenterMesh.position.set(0, 0);
+                treeCenterMesh.width = 2000 * scaleImage;
+                treeCenterMesh.height = 2000 * scaleImage;
+                bgContainer.addChild(treeCenterMesh);
+
+                // draw connectors
+                treeInfo.connectors.forEach((connector) => {
+                    const asset =  connector.type + (connector.alloc ? "Active" : "Normal");
+                    const connectorAsset = assetsInfo[asset];
+                    if (connectorAsset.TextCache == null) {
+                        connectorAsset.TextCache = PIXI.Texture.from(connectorAsset.texturePath);
+                        connectorAsset.TextCache.source.style.maxAnisotropy = 16;
+                        connectorAsset.TextCache.source.autoGenerateMipmaps = true;
                     }
 
-                    let start = { x: node.x, y: node.y };
-                    let end = { x: target.x, y: target.y };
-                    let distance = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
-                    let angle = Math.atan2(end.y - start.y, end.x - start.x);
-                    let control = { x: start.x + distance / 2 * Math.cos(angle), y: start.y + distance / 2 * Math.sin(angle) };
-                    treeInfo.connectors.push({ type: "LineConnector", x: control.x, y: control.y, rotation: angle, width: distance });
-                }
-            })
-
-            // load the json file
-            await PIXI.Assets.load(assetsToLoad);
-
-            // Hide the loading message
-            document.getElementById('loading-message').style.display = 'none';
-
-            // Show the PixiJS canvas
-            app.canvas.style.display = 'block';
-
-            // load center background
-            const bgAsset = ddsIconInfo['Background2'];
-            const bg = PIXI.Sprite.from(bgAsset.texturePath);
-            // bg.position.set(app.screen.width / 2, app.screen.height / 2);
-            bg.width = app.screen.width;
-            bg.height = app.screen.height;
-            
-            app.stage.addChild(bg);
-
-            // Viewport
-            const viewport =  new PIXI.Container();
-            app.stage.addChild(viewport);
-
-            const bgContainer = new PIXI.Container();
-            viewport.addChild(bgContainer);
-
-            const arcContainer = new PIXI.Container();
-            viewport.addChild(arcContainer);
-
-            const linesContainer = new PIXI.Container();
-            viewport.addChild(linesContainer);
-
-            const nodesContainer = new PIXI.Container();
-            viewport.addChild(nodesContainer);
-
-            let assetOrbit2 = PIXI.Texture.from(assetsInfo["Orbit2Normal"].texturePath);
-            assetOrbit2.source.style.maxAnisotropy = 16;
-            assetOrbit2.source.autoGenerateMipmaps = true;
-            let demoArc = createOrGetTheMask({ x: 0, y: 0, r: 162, a1: 250 * (Math.PI / 180), a2: 270 * (Math.PI / 180) }, assetOrbit2, true);
-            let demo2Arc = createOrGetTheMask({ x: 0, y: 0, r: 162, a1: 270 * (Math.PI / 180), a2: 360 * (Math.PI / 180) }, assetOrbit2, true);
-
-            let spriteArc = new PIXI.Sprite(assetOrbit2);
-            spriteArc.anchor.set(1);
-            spriteArc.position.set(100, 0);
-            arcContainer.addChild(spriteArc);
-            //demoArc.setStrokeStyle({ width: 50, color: 0xFF0000, alpha: 1})
-            //demoArc.arc(0, 0, 500, 0, Math.PI / 2);
-            //demoArc.rect(0, 0, 1000, 1000);
-            //demoArc.stroke();
-            arcContainer.addChild(demoArc);
-            arcContainer.addChild(demo2Arc);
-
-            // load the class
-            let classAsset =  ddsIconInfo['ClassesMonk'];
-            const classMesh = createShape(classAsset.texturePath, classAsset.layer);
-            classMesh.anchor.set(0.5);
-            classMesh.position.set(0, 0);
-            classMesh.width = 1500 * scaleImage;
-            classMesh.height = 1500 * scaleImage;
-            bgContainer.addChild(classMesh);
-
-            // Load the center activate
-            let treeCenterActive = ddsIconInfo['BGTreeActive'];
-            const treeCenterActiveMesh = createShape(treeCenterActive.texturePath, treeCenterActive.layer);
-            treeCenterActiveMesh.anchor.set(0.5);
-            treeCenterActiveMesh.position.set(0, 0);
-            treeCenterActiveMesh.width = 2000 * scaleImage;
-            treeCenterActiveMesh.height = 2000 * scaleImage;
-            bgContainer.addChild(treeCenterActiveMesh);
-
-            // Load the center tree
-            let treeCenter = ddsIconInfo['BGTree'];
-            const treeCenterMesh = createShape(treeCenter.texturePath, treeCenter.layer);
-            treeCenterMesh.anchor.set(0.5);
-            treeCenterMesh.position.set(0, 0);
-            treeCenterMesh.width = 2000 * scaleImage;
-            treeCenterMesh.height = 2000 * scaleImage;
-            bgContainer.addChild(treeCenterMesh);
-
-            // draw connectors
-            treeInfo.connectors.forEach((connector) => {
-                const asset =  connector.type + (connector.alloc ? "Active" : "Normal");
-                const connectorAsset = assetsInfo[asset];
-                if (connectorAsset.TextCache == null) {
-                    connectorAsset.TextCache = PIXI.Texture.from(connectorAsset.texturePath);
-                    connectorAsset.TextCache.source.style.maxAnisotropy = 16;
-                    connectorAsset.TextCache.source.autoGenerateMipmaps = true;
-                }
-
-                const connectorMesh = PIXI.Sprite.from(connectorAsset.TextCache);
-                let tmpContainer = linesContainer;
-                if (connector.type == "LineConnector") {
-                    connectorMesh.anchor.set(0.5);
-                    tmpContainer = linesContainer;
-                } else {
-                    // tmpContainer = arcContainer;
-                    // create the arc mask based on a1 and a2
-                    const mask = createOrGetTheMask(connector, connectorAsset.TextCache);
-                    arcContainer.addChild(mask);
-                    // connectorMesh.mask = mask;
-                    connectorMesh.anchor.set(1);
-                    return;
-                }
-                connectorMesh.position.set(connector.x, connector.y);
-                connectorMesh.rotation = connector.rotation;
-                if (connector.width) {
-                    connectorMesh.width = connector.width;
-                }
-                if (connector.height) {
-                    connectorMesh.height = connector.height;
-                }
-                tmpContainer.addChild(connectorMesh);
-            });
-
-            // draw nodes
-            Object.entries(treeInfo.nodes).forEach(([key,node]) => {
-                if (node.type == "ClassStart") {
-                    return;
-                }
-                let sizes = GetNodeTargetSize(node);
-                
-                if (node.activeEffectImage) {
-                    const effectAsset = ddsIconInfo[node.activeEffectImage];
-                    const effectMesh = createShape(effectAsset.texturePath, effectAsset.layer);
-                    const dimensions = (node.isOnlyImage || !sizes.effect) ? sizes : sizes.effect;
-                    effectMesh.anchor.set(0.5);
-                    effectMesh.position.set(node.x, node.y);
-                    effectMesh.tint = calculateColorHex(70); // 30% luminosity
-                    effectMesh.width = dimensions.width * scaleImage;
-                    effectMesh.height = dimensions.height * scaleImage;
-                    bgContainer.addChild(effectMesh);
-                }
-
-                if (node.isOnlyImage) {
-                    return;
-                }
-
-                if (node.type != "Socket") {
-                    const nodeAsset = ddsIconInfo[node.icon];
-                    if (!nodeAsset) {
-                        console.log('Asset not found for node', node);
+                    const connectorMesh = PIXI.Sprite.from(connectorAsset.TextCache);
+                    let tmpContainer = linesContainer;
+                    if (connector.type == "LineConnector") {
+                        connectorMesh.anchor.set(0.5);
+                        tmpContainer = linesContainer;
+                    } else {
+                        // tmpContainer = arcContainer;
+                        // create the arc mask based on a1 and a2
+                        const mask = createOrGetTheMask(connector, connectorAsset.TextCache);
+                        arcContainer.addChild(mask);
+                        // connectorMesh.mask = mask;
+                        connectorMesh.anchor.set(1);
                         return;
                     }
-                    const nodeMesh = createShape(nodeAsset.texturePath, nodeAsset.layer);
-                    nodeMesh.tint = node.alloc ? calculateColorHex(0) : calculateColorHex(20); // 50% luminosity
-                    nodeMesh.anchor.set(0.5);
-                    nodeMesh.position.set(node.x, node.y);
+                    connectorMesh.position.set(connector.x, connector.y);
+                    connectorMesh.rotation = connector.rotation;
+                    if (connector.width) {
+                        connectorMesh.width = connector.width;
+                    }
+                    if (connector.height) {
+                        connectorMesh.height = connector.height;
+                    }
+                    tmpContainer.addChild(connectorMesh);
+                });
 
-                    nodeMesh.width = sizes.width * scaleImage;
-                    nodeMesh.height = sizes.height * scaleImage;
-                    nodesContainer.addChild(nodeMesh);
-                }
+                // draw nodes
+                Object.entries(treeInfo.nodes).forEach(([key,node]) => {
+                    if (node.type == "ClassStart") {
+                        return;
+                    }
+                    let sizes = GetNodeTargetSize(node);
+                    
+                    if (node.activeEffectImage) {
+                        const effectAsset = ddsIconInfo[node.activeEffectImage];
+                        const effectMesh = createShape(effectAsset.texturePath, effectAsset.layer);
+                        const dimensions = (node.isOnlyImage || !sizes.effect) ? sizes : sizes.effect;
+                        effectMesh.anchor.set(0.5);
+                        effectMesh.position.set(node.x, node.y);
+                        effectMesh.tint = calculateColorHex(70); // 30% luminosity
+                        effectMesh.width = dimensions.width * scaleImage;
+                        effectMesh.height = dimensions.height * scaleImage;
+                        bgContainer.addChild(effectMesh);
+                    }
 
-                if (node.overlay) {
-                    const state = node.alloc ? node.overlay.alloc : node.overlay.unalloc;
-                    const overlayAsset = ddsIconInfo[state];
-                    const overlayMesh = createShape(overlayAsset.texturePath, overlayAsset.layer);
-                    overlayMesh.anchor.set(0.5);
-                    overlayMesh.position.set(node.x, node.y);
-                    overlayMesh.width = sizes.overlay.width * scaleImage;
-                    overlayMesh.height = sizes.overlay.height * scaleImage;
-                    nodesContainer.addChild(overlayMesh);
-                }
-            });
+                    if (node.isOnlyImage) {
+                        return;
+                    }
 
-            // Event handler
-            let zoomFactor = 0.03;
-            viewport.x = app.screen.width / 2;
-            viewport.y = app.screen.height / 2;
-            viewport.scale.set(zoomFactor);
+                    if (node.type != "Socket") {
+                        const nodeAsset = ddsIconInfo[node.icon];
+                        if (!nodeAsset) {
+                            console.log('Asset not found for node', node);
+                            return;
+                        }
+                        const nodeMesh = createShape(nodeAsset.texturePath, nodeAsset.layer);
+                        nodeMesh.tint = node.alloc ? calculateColorHex(0) : calculateColorHex(20); // 50% luminosity
+                        nodeMesh.anchor.set(0.5);
+                        nodeMesh.position.set(node.x, node.y);
 
-            let isDragging = false;
-            let dragStart = { x:0, y:0 };
-            let containerStart = { x:0, y:0 };
+                        nodeMesh.width = sizes.width * scaleImage;
+                        nodeMesh.height = sizes.height * scaleImage;
+                        nodesContainer.addChild(nodeMesh);
+                    }
 
-            app.stage.interactive = true;
-            app.stage.hitArea = app.screen;
+                    if (node.overlay) {
+                        const state = node.alloc ? node.overlay.alloc : node.overlay.unalloc;
+                        const overlayAsset = ddsIconInfo[state];
+                        const overlayMesh = createShape(overlayAsset.texturePath, overlayAsset.layer);
+                        overlayMesh.anchor.set(0.5);
+                        overlayMesh.position.set(node.x, node.y);
+                        overlayMesh.width = sizes.overlay.width * scaleImage;
+                        overlayMesh.height = sizes.overlay.height * scaleImage;
+                        nodesContainer.addChild(overlayMesh);
+                    }
+                });
 
-            app.stage.on("pointerdown", (event) => {
-                isDragging = true;
-                dragStart = { x: event.global.x, y: event.global.y };
-                containerStart = { x: viewport.x, y: viewport.y };
-            });
-
-            app.stage.on("pointerup", () => {
-                isDragging = false;
-            });
-
-            app.stage.on("pointerupoutside", () => {
-                isDragging = false;
-            });
-
-            app.stage.on("pointermove", (event) => {
-                if (isDragging) {
-                    const dx = event.global.x - dragStart.x;
-                    const dy = event.global.y - dragStart.y;
-                    viewport.x = containerStart.x + dx;
-                    viewport.y = containerStart.y + dy;
-                }
-            });
-
-            app.stage.on("wheel", (event) => {
-                event.preventDefault();
-                const zoomAmount = 0.08; // Adjust zoom speed
-                const oldZoom = zoomFactor;
-
-                if (event.deltaY < 0) {
-                    zoomFactor = Math.min(zoomFactor + zoomAmount, 1);
-                } else {
-                    zoomFactor = Math.max(zoomFactor - zoomAmount, 0.03);
-                }
-                
-                const mousePos =  event.global;
-                const containerMouseX = (mousePos.x - viewport.x) / oldZoom;
-                const containerMouseY = (mousePos.y - viewport.y) / oldZoom;
-
-                const newViewportX = mousePos.x - containerMouseX * zoomFactor;
-                const newViewportY = mousePos.y - containerMouseY * zoomFactor;
-
-                viewport.x = newViewportX;
-                viewport.y = newViewportY;
-
+                // Event handler
+                let zoomFactor = 0.03;
+                viewport.x = app.screen.width / 2;
+                viewport.y = app.screen.height / 2;
                 viewport.scale.set(zoomFactor);
-            });
 
-            let elapsed = 0.0;
+                let isDragging = false;
+                let dragStart = { x:0, y:0 };
+                let containerStart = { x:0, y:0 };
 
-            app.ticker.add((ticker) => {
-                elapsed += ticker.deltaTime;
-            });
+                app.stage.interactive = true;
+                app.stage.hitArea = app.screen;
 
-            document.body.appendChild(app.canvas);
+                app.stage.on("pointerdown", (event) => {
+                    isDragging = true;
+                    dragStart = { x: event.global.x, y: event.global.y };
+                    containerStart = { x: viewport.x, y: viewport.y };
+                });
+
+                app.stage.on("pointerup", () => {
+                    isDragging = false;
+                });
+
+                app.stage.on("pointerupoutside", () => {
+                    isDragging = false;
+                });
+
+                app.stage.on("pointermove", (event) => {
+                    if (isDragging) {
+                        const dx = event.global.x - dragStart.x;
+                        const dy = event.global.y - dragStart.y;
+                        viewport.x = containerStart.x + dx;
+                        viewport.y = containerStart.y + dy;
+                    }
+                });
+
+                app.stage.on("wheel", (event) => {
+                    event.preventDefault();
+                    const zoomAmount = 0.08; // Adjust zoom speed
+                    const oldZoom = zoomFactor;
+
+                    if (event.deltaY < 0) {
+                        zoomFactor = Math.min(zoomFactor + zoomAmount, 1);
+                    } else {
+                        zoomFactor = Math.max(zoomFactor - zoomAmount, 0.03);
+                    }
+                    
+                    const mousePos =  event.global;
+                    const containerMouseX = (mousePos.x - viewport.x) / oldZoom;
+                    const containerMouseY = (mousePos.y - viewport.y) / oldZoom;
+
+                    const newViewportX = mousePos.x - containerMouseX * zoomFactor;
+                    const newViewportY = mousePos.y - containerMouseY * zoomFactor;
+
+                    viewport.x = newViewportX;
+                    viewport.y = newViewportY;
+
+                    viewport.scale.set(zoomFactor);
+                });
+
+                let elapsed = 0.0;
+
+                app.ticker.add((ticker) => {
+                    elapsed += ticker.deltaTime;
+                });
+
+                document.body.appendChild(app.canvas);
+            } catch (error) {
+                document.getElementById('loading-message').innerText = 'An error occurred while loading the assets.\n' + error;  
+            }
         </script>
     </body>
 </html>
