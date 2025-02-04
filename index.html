@@ -18,10 +18,8 @@
             }
 
             #loading-message {
-                position: absolute;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
+                word-wrap: break-word;
+                padding: 16px;
                 text-align: center;
             }
 
@@ -275,6 +273,7 @@
             }
 
             try {
+                throw new Error('This is a test error message a sdalkjasdjklfhaskjlhjskahfkasdjfhskajdfhsdkafhsdakjfhsakjfhdkjlashdflsahfslajkhf ksjadhksjadfhsadkjlfhsdfj');
                 PIXI.extensions.add(PIXI.loadDDS, PIXI.loadKTX , PIXI.detectCompressed, PIXI.resolveCompressedTextureUrl, zstdDDSExtension);
                 const app = new PIXI.Application();
                 await app.init({
